@@ -1,0 +1,21 @@
+{
+  "name": "sistema-solar-babylonjs",
+  "version": "1.0.0",
+  "description": "Sistema solar interactivo en 3D con Babylon.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "babylonjs",
+    "sistema-solar",
+    "3d",
+    "webgl"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
