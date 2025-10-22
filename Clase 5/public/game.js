@@ -1,5 +1,7 @@
 // Variables globales
 let canvas, engine, scene, camera, yeti, cameraTargetNode;
+const obstacles = [];
+const characterCollisionRadius = 0.75;
 let inputMap = {};
 let isRunning = false;
 let idleAnimation = null;
@@ -227,6 +229,7 @@ function createForestGround() {
 
 // Crear árboles en el bosque
 function createTrees() {
+    obstacles.length = 0;
     const treeCount = 80;
     
     for (let i = 0; i < treeCount; i++) {
@@ -243,11 +246,13 @@ function createTrees() {
 // Crear un árbol individual
 function createTree(x, z) {
     const height = 5 + Math.random() * 3;
+    const trunkDiameter = 0.5 + Math.random() * 0.3;
+    const foliageDiameter = 3 + Math.random() * 2;
     
     // Tronco
     const trunk = BABYLON.MeshBuilder.CreateCylinder(
         "trunk",
-        { height: height, diameter: 0.5 + Math.random() * 0.3 },
+        { height: height, diameter: trunkDiameter },
         scene
     );
     trunk.position = new BABYLON.Vector3(x, height / 2, z);
@@ -267,7 +272,7 @@ function createTree(x, z) {
     // Copa del árbol - configurada para recibir luz
     const foliage = BABYLON.MeshBuilder.CreateSphere(
         "foliage",
-        { diameter: 3 + Math.random() * 2, segments: 16 },
+        { diameter: foliageDiameter, segments: 16 },
         scene
     );
     foliage.position = new BABYLON.Vector3(x, height + 2, z);
@@ -284,6 +289,13 @@ function createTree(x, z) {
     if (scene.shadowGenerator) {
         scene.shadowGenerator.addShadowCaster(foliage);
     }
+
+    // Habilitar colisiones básicas
+    trunk.checkCollisions = true;
+    foliage.checkCollisions = true;
+
+    const colliderRadius = Math.max(foliageDiameter * 0.2, trunkDiameter * 0.7);
+    obstacles.push({ x, z, radius: colliderRadius });
 }
 
 // Cargar el modelo Yeti
@@ -585,8 +597,16 @@ function updateYetiMovement() {
 
         moveDirection.normalize();
 
-        yeti.position.x += moveDirection.x * speed;
-        yeti.position.z += moveDirection.z * speed;
+        const attemptedX = yeti.position.x + moveDirection.x * speed;
+        const attemptedZ = yeti.position.z + moveDirection.z * speed;
+
+        if (!collidesWithObstacles(attemptedX, yeti.position.z, characterCollisionRadius)) {
+            yeti.position.x = attemptedX;
+        }
+
+        if (!collidesWithObstacles(yeti.position.x, attemptedZ, characterCollisionRadius)) {
+            yeti.position.z = attemptedZ;
+        }
         
         // Calcular el ángulo de rotación basado en la dirección del movimiento
         const targetRotation = Math.atan2(moveDirection.x, moveDirection.z);
@@ -614,6 +634,19 @@ function updateYetiMovement() {
     // Limitar el área de movimiento
     yeti.position.x = Math.max(-95, Math.min(95, yeti.position.x));
     yeti.position.z = Math.max(-95, Math.min(95, yeti.position.z));
+}
+
+function collidesWithObstacles(x, z, radius) {
+    for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i];
+        const dx = x - obstacle.x;
+        const dz = z - obstacle.z;
+        const minDistance = radius + obstacle.radius;
+        if ((dx * dx + dz * dz) < (minDistance * minDistance)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Actualizar posición de la cámara para seguir al Yeti
