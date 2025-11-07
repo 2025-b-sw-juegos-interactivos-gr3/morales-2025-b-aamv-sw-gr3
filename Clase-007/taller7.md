@@ -6,7 +6,7 @@
 
 **Basado en:** [Presentación - Fundamentos y Contexto del Juego: Módulo 1](https://app.presentations.ai/view/z26sCCO9HS)
 
-**Curso:** CC: 2025-B SW Juegos Interactivos GR3
+**Integrantes:** Alex Escobar, Alexander Morales
 
 ---
 
