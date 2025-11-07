@@ -1,6 +1,9 @@
 // Variables globales
 let canvas, engine, scene, camera, yeti, cameraTargetNode;
 const obstacles = [];
+const fogPatches = [];
+let fogAnimationTime = 0;
+let groundFogTexture = null;
 const characterCollisionRadius = 0.75;
 let inputMap = {};
 let isRunning = false;
@@ -105,6 +108,9 @@ function createScene() {
     
     // Crear árboles
     createTrees();
+
+    // Neblina ambiental en zonas específicas
+    createGroundFog();
     
     // Cargar el personaje Yeti
     loadYeti();
@@ -296,6 +302,193 @@ function createTree(x, z) {
 
     const colliderRadius = Math.max(foliageDiameter * 0.2, trunkDiameter * 0.7);
     obstacles.push({ x, z, radius: colliderRadius });
+}
+
+function createGroundFog() {
+    clearFogPatches();
+
+    groundFogTexture = createFogDynamicTexture();
+
+    const baseMaterial = new BABYLON.StandardMaterial("fogBaseMaterial", scene);
+    baseMaterial.diffuseTexture = groundFogTexture;
+    baseMaterial.opacityTexture = groundFogTexture;
+    baseMaterial.diffuseTexture.hasAlpha = true;
+    baseMaterial.opacityTexture.hasAlpha = true;
+    baseMaterial.useAlphaFromDiffuseTexture = true;
+    baseMaterial.backFaceCulling = false;
+    baseMaterial.disableLighting = true;
+    baseMaterial.specularColor = BABYLON.Color3.Black();
+    baseMaterial.emissiveColor = new BABYLON.Color3(0.55, 0.6, 0.65);
+    baseMaterial.fogEnabled = false;
+    baseMaterial.alpha = 0.3;
+    baseMaterial.alphaMode = BABYLON.Engine.ALPHA_PREMULTIPLIED;
+
+    const patchCenters = [
+        new BABYLON.Vector3(10, 0.2, 16),
+        new BABYLON.Vector3(-18, 0.2, -10),
+        new BABYLON.Vector3(24, 0.2, -20),
+        new BABYLON.Vector3(-26, 0.2, 22),
+        new BABYLON.Vector3(6, 0.2, -8)
+    ];
+
+    patchCenters.forEach((center, index) => {
+        const root = new BABYLON.TransformNode(`fogPatchRoot${index}`, scene);
+        root.position = center.clone();
+
+        const rotationSpeed = BABYLON.Scalar.Lerp(0.03, 0.08, Math.random());
+        const layerCount = 4 + Math.floor(Math.random() * 3);
+        const layers = [];
+
+        for (let i = 0; i < layerCount; i++) {
+            const size = 16 + Math.random() * 14;
+            const fogPlane = BABYLON.MeshBuilder.CreatePlane(`fogPlane${index}_${i}`, { size }, scene);
+            fogPlane.parent = root;
+            fogPlane.isPickable = false;
+            fogPlane.rotation.x = Math.PI / 2;
+            fogPlane.rotation.z = Math.random() * Math.PI * 2;
+            fogPlane.position = new BABYLON.Vector3(0, 0.15 + i * 0.28, 0);
+            fogPlane.renderingGroupId = 2;
+            fogPlane.applyFog = false;
+
+            const layerMaterial = baseMaterial.clone(`fogLayerMat${index}_${i}`);
+            layerMaterial.alpha = 0.35 + Math.random() * 0.22;
+            layerMaterial.emissiveColor = new BABYLON.Color3(
+                0.5 + Math.random() * 0.1,
+                0.55 + Math.random() * 0.1,
+                0.6 + Math.random() * 0.1
+            );
+            layerMaterial.alphaMode = BABYLON.Engine.ALPHA_PREMULTIPLIED;
+            fogPlane.material = layerMaterial;
+
+            layers.push({
+                mesh: fogPlane,
+                baseAlpha: layerMaterial.alpha,
+                amplitude: 0.12 + Math.random() * 0.07,
+                pulseSpeed: 0.18 + Math.random() * 0.18,
+                phase: Math.random() * Math.PI * 2,
+                baseHeight: fogPlane.position.y,
+                floatSpeed: 0.08 + Math.random() * 0.18,
+                offsetSpeed: 0.005 + Math.random() * 0.01
+            });
+        }
+
+        fogPatches.push({
+            root,
+            layers,
+            rotationSpeed,
+            uOffset: Math.random(),
+            vOffset: Math.random()
+        });
+    });
+
+    console.log(`Zonas de neblina creadas: ${fogPatches.length}`);
+}
+
+function createFogDynamicTexture() {
+    const size = 512;
+    const texture = new BABYLON.DynamicTexture("groundFogTexture", size, scene, true);
+    const ctx = texture.getContext();
+    ctx.clearRect(0, 0, size, size);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(0,0,0,0)";
+    ctx.fillRect(0, 0, size, size);
+
+    const baseGradient = ctx.createRadialGradient(
+        size / 2,
+        size / 2,
+        size * 0.1,
+        size / 2,
+        size / 2,
+        size * 0.55
+    );
+    baseGradient.addColorStop(0, "rgba(255, 255, 255, 0.4)");
+    baseGradient.addColorStop(0.55, "rgba(255, 255, 255, 0.16)");
+    baseGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = baseGradient;
+    ctx.fillRect(0, 0, size, size);
+
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 28; i++) {
+        const radius = size * (0.1 + Math.random() * 0.35);
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const alpha = 0.04 + Math.random() * 0.09;
+        const gradient = ctx.createRadialGradient(x, y, radius * 0.1, x, y, radius);
+        gradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+        gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    texture.update();
+    texture.hasAlpha = true;
+    texture.wrapU = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    texture.wrapV = BABYLON.Texture.CLAMP_ADDRESSMODE;
+    return texture;
+}
+
+function clearFogPatches() {
+    while (fogPatches.length) {
+        const patch = fogPatches.pop();
+        patch.layers.forEach(layer => {
+            if (layer.mesh.material) {
+                layer.mesh.material.dispose(false, false);
+            }
+            layer.mesh.dispose();
+        });
+        patch.root.dispose();
+    }
+
+    if (groundFogTexture) {
+        groundFogTexture.dispose();
+        groundFogTexture = null;
+    }
+
+    fogAnimationTime = 0;
+}
+
+function updateFog(deltaSeconds) {
+    if (!fogPatches.length) return;
+
+    fogAnimationTime += deltaSeconds;
+
+    fogPatches.forEach(patch => {
+        patch.root.rotation.y += patch.rotationSpeed * deltaSeconds;
+        patch.uOffset = (patch.uOffset + 0.01 * deltaSeconds) % 1;
+        patch.vOffset = (patch.vOffset + 0.008 * deltaSeconds) % 1;
+
+        patch.layers.forEach(layer => {
+            const pulse = Math.sin(fogAnimationTime * layer.pulseSpeed + layer.phase);
+            const targetAlpha = BABYLON.Scalar.Clamp(
+                layer.baseAlpha + layer.amplitude * pulse,
+                0,
+                0.85
+            );
+
+            if (layer.mesh.material) {
+                layer.mesh.material.alpha = targetAlpha;
+
+                const diffuseTex = layer.mesh.material.diffuseTexture;
+                const opacityTex = layer.mesh.material.opacityTexture;
+                const layerU = (patch.uOffset + layer.offsetSpeed * fogAnimationTime * 0.5) % 1;
+                const layerV = (patch.vOffset + layer.offsetSpeed * fogAnimationTime * 0.4) % 1;
+                if (diffuseTex) {
+                    diffuseTex.uOffset = layerU;
+                    diffuseTex.vOffset = layerV;
+                }
+                if (opacityTex) {
+                    opacityTex.uOffset = layerU;
+                    opacityTex.vOffset = layerV;
+                }
+            }
+
+            layer.mesh.position.y = layer.baseHeight + Math.sin(
+                fogAnimationTime * layer.floatSpeed + layer.phase
+            ) * 0.12;
+        });
+    });
 }
 
 // Cargar el modelo Yeti
@@ -529,6 +722,9 @@ function setupInput() {
     
     // Update loop para movimiento
     scene.onBeforeRenderObservable.add(() => {
+        const deltaSeconds = scene.getEngine().getDeltaTime() / 1000;
+        updateFog(deltaSeconds);
+
         if (yeti) {
             updateYetiMovement();
             updateCamera();
